@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2b2b2a">
+<title>Asfalt – wykopy</title>
+<style>
+:root{--bg:#2b2b2a;--card:#363635;--line:#4a4a48;--tx:#f1efe9;--mut:#a8a69e;--ac:#f2b705;--acx:#1d1d1c;--bad:#e5604d;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eceae4;--card:#fff;--line:#d3d0c6;--tx:#232322;--mut:#6c6a62;--ac:#c99700;--acx:#fff;--bad:#b83a28}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px 14px 90px}
+h1{font-size:1.5rem;margin:6px 0 14px}
+.set{display:flex;gap:10px;margin-bottom:14px}
+.set label{flex:1;font-size:.8rem;color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+.top{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+input,select,button{font:inherit;color:var(--tx);background:transparent;border:0;border-bottom:2px solid var(--line);border-radius:0;padding:6px 2px;width:100%;min-width:0}
+input:focus,select:focus{outline:none;border-color:var(--ac)}
+select{width:auto;background:var(--card);padding:6px 0}
+.name{font-weight:600;font-size:1.05rem}
+.row{display:grid;grid-template-columns:5.2rem 1fr auto;gap:8px;align-items:end;margin-bottom:8px}
+.row span{font-size:.85rem;color:var(--mut);padding-bottom:8px}
+.res{display:flex;justify-content:space-between;gap:6px;border-top:1px dashed var(--line);margin-top:10px;padding-top:10px;font-variant-numeric:tabular-nums}
+.res b{display:block;font-size:1.15rem}
+.res small{color:var(--mut)}
+.ic{width:auto;border:0;padding:6px 8px;color:var(--mut);font-size:.85rem;cursor:pointer}
+.ic.del{color:var(--bad)}
+.tot{border-color:var(--ac);border-width:2px}
+.tot .res{border:0;margin:0;padding:0}
+.tot .res b{font-size:1.4rem}
+.btn{display:block;width:100%;border:0;border-radius:10px;background:var(--ac);color:var(--acx);font-weight:700;padding:14px;text-align:center;cursor:pointer}
+.btn.sec{background:transparent;color:var(--tx);border:1px solid var(--line);font-weight:500;margin-top:10px}
+.empty{color:var(--mut);text-align:center;padding:26px 10px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+<main>
+<h1>Asfalt – wykopy</h1>
+
+<div class="set">
+  <label>Gęstość mieszanki (kg/m³)<input id="den" inputmode="decimal"></label>
+  <label>Zapas (%)<input id="res" inputmode="decimal"></label>
+</div>
+
+<div id="list"></div>
+
+<div class="card tot" id="tot"></div>
+
+<button class="btn" id="add">Dodaj wykop</button>
+<button class="btn sec" id="copy">Kopiuj podsumowanie</button>
+<button class="btn sec" id="clr">Usuń wszystkie wykopy</button>
+</main>
+<div id="toast"></div>
+
+<script>
+const KEY='asfalt-wykopy-v1';
+let S={items:[],density:2400,reserve:0};
+try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r));}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}};
+const $=s=>document.querySelector(s);
+const num=v=>parseFloat(String(v).replace(',','.'))||0;
+const toM=(v,u)=>num(v)*(u==='cm'?0.01:1);
+const fmt=(n,d=2)=>n.toLocaleString('pl-PL',{minimumFractionDigits:d,maximumFractionDigits:d});
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+
+function calc(i){
+  const a=toM(i.l,i.lu)*toM(i.w,i.wu), v=a*toM(i.t,i.tu);
+  const vr=v*(1+num(S.reserve)/100);
+  return {a,v,vr,t:vr*num(S.density)/1000};
+}
+function totals(){
+  return S.items.reduce((s,i)=>{const c=calc(i);s.a+=c.a;s.v+=c.v;s.vr+=c.vr;s.t+=c.t;return s;},{a:0,v:0,vr:0,t:0});
+}
+function newItem(){
+  const n=S.items.length+1;
+  return {id:uid(),name:'Wykop '+n,l:'',lu:'m',w:'',wu:'m',t:'',tu:'cm'};
+}
+function field(i,k,label,uk){
+  const u=i[uk];
+  return `<div class="row"><span>${label}</span>
+  <input inputmode="decimal" data-id="${i.id}" data-k="${k}" value="${esc(i[k])}" placeholder="0">
+  <select data-id="${i.id}" data-k="${uk}"><option value="m"${u==='m'?' selected':''}>m</option><option value="cm"${u==='cm'?' selected':''}>cm</option></select></div>`;
+}
+function render(){
+  const L=$('#list');
+  if(!S.items.length){L.innerHTML='<div class="empty">Brak wykopów. Dotknij „Dodaj wykop”, żeby zacząć.</div>';}
+  else L.innerHTML=S.items.map(i=>`<div class="card" data-card="${i.id}">
+    <div class="top"><input class="name" data-id="${i.id}" data-k="name" value="${esc(i.name)}" aria-label="Nazwa wykopu">
+    <button class="ic" data-act="dup" data-id="${i.id}">Powiel</button>
+    <button class="ic del" data-act="del" data-id="${i.id}">Usuń</button></div>
+    ${field(i,'l','Długość','lu')}${field(i,'w','Szerokość','wu')}${field(i,'t','Grubość','tu')}
+    <div class="res"><div><small>Powierzchnia</small><b data-o="a"></b></div><div><small>Objętość</small><b data-o="v"></b></div><div><small>Masa</small><b data-o="t"></b></div></div>
+  </div>`).join('');
+  update();
+}
+function update(){
+  S.items.forEach(i=>{
+    const c=calc(i),el=document.querySelector(`[data-card="${i.id}"]`);
+    if(!el)return;
+    el.querySelector('[data-o="a"]').textContent=fmt(c.a)+' m²';
+    el.querySelector('[data-o="v"]').textContent=fmt(c.v,3)+' m³';
+    el.querySelector('[data-o="t"]').textContent=fmt(c.t)+' t';
+  });
+  const T=totals();
+  $('#tot').innerHTML=`<small style="color:var(--mut)">Razem (${S.items.length} ${S.items.length===1?'wykop':'wykopów'}, zapas ${fmt(num(S.reserve),0)}%)</small>
+  <div class="res" style="margin-top:8px"><div><small>Powierzchnia</small><b>${fmt(T.a)} m²</b></div><div><small>Objętość</small><b>${fmt(T.vr,3)} m³</b></div><div><small>Do zamówienia</small><b>${fmt(T.t)} t</b></div></div>`;
+  save();
+}
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1800);}
+
+$('#den').value=S.density;$('#res').value=S.reserve;
+$('#den').oninput=e=>{S.density=e.target.value;update();};
+$('#res').oninput=e=>{S.reserve=e.target.value;update();};
+
+$('#list').addEventListener('input',e=>{
+  const t=e.target,i=S.items.find(x=>x.id===t.dataset.id);
+  if(i&&t.dataset.k){i[t.dataset.k]=t.value;update();}
+});
+$('#list').addEventListener('change',e=>{
+  const t=e.target,i=S.items.find(x=>x.id===t.dataset.id);
+  if(i&&t.tagName==='SELECT'){i[t.dataset.k]=t.value;update();}
+});
+$('#list').addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;
+  const idx=S.items.findIndex(x=>x.id===b.dataset.id);if(idx<0)return;
+  if(b.dataset.act==='del'){
+    if(!confirm('Usunąć „'+S.items[idx].name+'”?'))return;
+    S.items.splice(idx,1);
+  }else{
+    S.items.splice(idx+1,0,Object.assign({},S.items[idx],{id:uid(),name:S.items[idx].name+' (kopia)'}));
+  }
+  render();
+});
+$('#add').onclick=()=>{S.items.push(newItem());render();
+  const c=$('#list').lastElementChild;c.scrollIntoView({behavior:'smooth',block:'center'});
+  const n=c.querySelector('.name');n.focus();n.select();};
+$('#clr').onclick=()=>{if(S.items.length&&confirm('Usunąć wszystkie wykopy?')){S.items=[];render();}};
+$('#copy').onclick=async()=>{
+  const T=totals();
+  const lines=S.items.map((i,n)=>{const c=calc(i);
+    return `${n+1}. ${i.name}: ${i.l}${i.lu} × ${i.w}${i.wu} × ${i.t}${i.tu} = ${fmt(c.a)} m², ${fmt(c.v,3)} m³, ${fmt(c.t)} t`;});
+  const txt=lines.join('\n')+`\n\nRazem: ${fmt(T.a)} m², ${fmt(T.vr,3)} m³ (zapas ${fmt(num(S.reserve),0)}%)\nGęstość: ${fmt(num(S.density),0)} kg/m³\nDo zamówienia: ${fmt(T.t)} t`;
+  try{await navigator.clipboard.writeText(txt);toast('Skopiowano');}
+  catch(e){prompt('Skopiuj ręcznie:',txt);}
+};
+if(!S.items.length)S.items.push(newItem());
+render();
+</script>
+</body>
+</html>
